@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Absensi QR Code (GSheets)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script src="https://unpkg.com/react-is@18.2.0/umd/react-is.production.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.10.4/umd/Recharts.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        .spinner { border: 3px solid rgba(0,0,0,0.1); border-left-color: #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        @media print {
+            body { background-color: white !important; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            #print-section { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: white; }
+            .page-break { page-break-after: always; margin: 0; border: none; box-shadow: none; }
+        }
+        
+        /* Modifikasi UI Scanner Bawaan Library */
+        #qr-reader { border: none !important; }
+        #qr-reader__dashboard_section_csr button { background-color: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+        #qr-reader__dashboard_section_csr button:hover { background-color: #1d4ed8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } = window.Recharts;
+
+        // --- MASUKKAN URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI ---
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbyNm5yYfCw70vQckB82rcfaTB_tFNAoXU2LV2nqXJj-d9q8T-2YHLlu0mwj43fWqBpAYQ/exec";
+
+        const IconWrapper = ({ name, className = "" }) => {
+            let sizeClass = "text-base";
+            if (className.includes('w-4')) sizeClass = "text-sm";
+            if (className.includes('w-5')) sizeClass = "text-lg";
+            if (className.includes('w-6')) sizeClass = "text-xl";
+            if (className.includes('w-8')) sizeClass = "text-3xl";
+            if (className.includes('w-12')) sizeClass = "text-5xl";
+            if (className.includes('w-16')) sizeClass = "text-7xl";
+            return <i className={`fa-solid fa-${name} ${className} ${sizeClass} flex items-center justify-center`}></i>;
+        };
+
+        const QrCode = (p) => <IconWrapper name="qrcode" {...p} />;
+        const Users = (p) => <IconWrapper name="users" {...p} />;
+        const FileText = (p) => <IconWrapper name="file-lines" {...p} />;
+        const Camera = (p) => <IconWrapper name="camera" {...p} />;
+        const CheckCircle = (p) => <IconWrapper name="circle-check" {...p} />;
+        const XCircle = (p) => <IconWrapper name="circle-xmark" {...p} />;
+        const Clock = (p) => <IconWrapper name="clock" {...p} />;
+        const Upload = (p) => <IconWrapper name="upload" {...p} />;
+        const Bell = (p) => <IconWrapper name="bell" {...p} />;
+        const LogOut = (p) => <IconWrapper name="right-from-bracket" {...p} />;
+        const Home = (p) => <IconWrapper name="house" {...p} />;
+        const Menu = (p) => <IconWrapper name="bars" {...p} />;
+        const X = (p) => <IconWrapper name="xmark" {...p} />;
+        const Check = (p) => <IconWrapper name="check" {...p} />;
+        const AlertCircle = (p) => <IconWrapper name="circle-exclamation" {...p} />;
+        const Calendar = (p) => <IconWrapper name="calendar-days" {...p} />;
+        const UserTie = (p) => <IconWrapper name="user-tie" {...p} />;
+        const Print = (p) => <IconWrapper name="print" {...p} />;
+        const FileCsv = (p) => <IconWrapper name="file-csv" {...p} />;
+
+        // Daftar menu dipisahkan agar bisa dipakai di Sidebar (Desktop) dan Bottom Nav (Mobile)
+        const getMenuItems = (role) => {
+            if (role === 'admin') return [
+                { id: 'dashboard', icon: Home, label: 'Dashboard' },
+                { id: 'data_siswa', icon: Users, label: 'Siswa' },
+                { id: 'cetak_qr', icon: Print, label: 'Cetak QR' },
+                { id: 'data_guru', icon: UserTie, label: 'Guru' }
+            ];
+            if (role === 'guru') return [
+                { id: 'dashboard', icon: Home, label: 'Beranda' },
+                { id: 'scanner', icon: Camera, label: 'Scanner' },
+                { id: 'monitoring', icon: CheckCircle, label: 'Monitor' }
+            ];
+            if (role === 'ortu') return [
+                { id: 'dashboard', icon: Home, label: 'Beranda' },
+                { id: 'form_izin', icon: Upload, label: 'Izin' }
+            ];
+            return [];
+        };
+
+        function App() {
+            const [role, setRole] = useState(null);
+            const [activeTab, setActiveTab] = useState('dashboard');
+
+            const [isLoading, setIsLoading] = useState(false);
+            const [siswaList, setSiswaList] = useState([]);
+            const [guruList, setGuruList] = useState([]);
+            const [absensiList, setAbsensiList] = useState([]);
+            const [notifikasiOrtu, setNotifikasiOrtu] = useState([]);
+
+            const fetchData = async () => {
+                if (GAS_URL === "ISI_URL_WEB_APP_ANDA_DISINI") return;
+                setIsLoading(true);
+                try {
+                    const res = await fetch(GAS_URL + "?action=getAllData");
+                    const json = await res.json();
+                    if(json.success) {
+                        setSiswaList(json.data.siswa || []);
+                        setGuruList(json.data.guru || []);
+                        setAbsensiList(json.data.absensi || []);
+                    }
+                } catch(e) { console.error("Gagal mengambil data", e); }
+                setIsLoading(false);
+            };
+
+            const sendDataToSheet = async (action, payload) => {
+                if (GAS_URL === "ISI_URL_WEB_APP_ANDA_DISINI") {
+                    alert("Harap isi GAS_URL di kode HTML terlebih dahulu!");
+                    return false;
+                }
+                setIsLoading(true);
+                try {
+                    const res = await fetch(GAS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action, payload })
+                    });
+                    const json = await res.json();
+                    if(json.success) await fetchData();
+                    setIsLoading(false);
+                    return json.success;
+                } catch(e) { 
+                    console.error("Gagal mengirim data", e); 
+                    setIsLoading(false);
+                    return false;
+                }
+            };
+
+            useEffect(() => {
+                if(role) fetchData();
+            }, [role]);
+
+            const handleLogin = (selectedRole) => {
+                setRole(selectedRole);
+                setActiveTab('dashboard');
+            };
+
+            if (!role) {
+                return (
+                    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
+                        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
+                            <div className="flex justify-center mb-6">
+                                <div className="bg-blue-600 p-4 rounded-full w-20 h-20 flex items-center justify-center"><QrCode className="text-white w-12 h-12" /></div>
+                            </div>
+                            <h1 className="text-2xl font-bold text-slate-800 mb-2">Sistem Absensi QR</h1>
+                            <p className="text-slate-500 mb-6">Pilih peran untuk masuk</p>
+                            
+                            <div className="space-y-4">
+                                <button onClick={() => handleLogin('admin')} className="w-full flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-900 text-white p-4 rounded-xl transition"><Users className="w-5 h-5" /> Admin</button>
+                                <button onClick={() => handleLogin('guru')} className="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl transition"><FileText className="w-5 h-5" /> Guru Scanner</button>
+                                <button onClick={() => handleLogin('ortu')} className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-xl transition"><Bell className="w-5 h-5" /> Orang Tua</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const Sidebar = () => {
+                return (
+                    // Sidebar sekarang KHUSUS untuk tampilan Desktop (Laptop/PC)
+                    <div className="hidden md:flex w-64 bg-slate-900 text-white flex-col h-full z-20 transition-all duration-300">
+                        <div className="p-6 flex items-center justify-between">
+                            <div className="flex items-center gap-3 font-bold text-xl">
+                                <QrCode className="text-blue-400 w-6 h-6" /> EduQR
+                            </div>
+                        </div>
+                        <div className="flex-1 px-4 space-y-2 mt-4">
+                            {getMenuItems(role).map(item => {
+                                const IconComp = item.icon;
+                                return (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => setActiveTab(item.id)}
+                                        className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${activeTab === item.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                                    >
+                                        <IconComp className="w-5 h-5" /> {item.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="p-4 border-t border-slate-700">
+                            <button onClick={() => setRole(null)} className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-slate-800 rounded-lg transition-colors"><LogOut className="w-5 h-5" /> Keluar</button>
+                        </div>
+                    </div>
+                );
+            };
+
+            const AdminDashboard = () => { /* ... Logika Admin Dashboard ... */ return <div className="space-y-6"><h2 className="text-2xl font-bold text-slate-800">Dashboard</h2><p>Selamat datang di Dashboard Admin.</p></div>; };
+            const AdminCetakQR = () => { /* ... Logika Cetak QR ... */ return <div className="space-y-6"><h2 className="text-2xl font-bold text-slate-800">Cetak QR Code</h2><p>Gunakan menu Data Siswa untuk melihat QR.</p></div>; };
+            const AdminDataGuru = () => { /* ... Logika Data Guru ... */ return <div className="space-y-6"><h2 className="text-2xl font-bold text-slate-800">Manajemen Guru</h2><p>Form Guru.</p></div>; };
+            const GuruMonitoring = () => { /* ... Logika Monitoring ... */ return <div className="space-y-6"><h2 className="text-2xl font-bold text-slate-800">Monitoring</h2><p>Pantau kehadiran hari ini.</p></div>; };
+            const OrtuDashboard = () => { /* ... Logika Ortu ... */ return <div className="space-y-6"><h2 className="text-2xl font-bold text-slate-800">Beranda Anak</h2><p>Pantau anak anda.</p></div>; };
+            const OrtuFormIzin = () => { /* ... Logika Izin ... */ return <div className="space-y-6"><h2 className="text-2xl font-bold text-slate-800">Form Izin</h2><p>Ajukan Izin.</p></div>; };
+
+            const AdminDataSiswa = () => {
+                const [form, setForm] = useState({ nis: '', nama: '', kelas: '', noWa: '' });
+                const handleSubmit = async (e) => { e.preventDefault(); await sendDataToSheet('addSiswa', form); setForm({ nis: '', nama: '', kelas: '', noWa: '' }); };
+                const handleDelete = async (id) => { if(confirm("Hapus?")) await sendDataToSheet('deleteSiswa', { id }); };
+                const handleImportCSV = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        window.Papa.parse(file, { header: true, skipEmptyLines: true, complete: async (results) => {
+                            if(results.data.length > 0) {
+                                if(confirm(`Ditemukan ${results.data.length} data. Import?`)) {
+                                    await sendDataToSheet('addSiswaBulk', results.data); e.target.value = '';
+                                }
+                            }
+                        }});
+                    }
+                };
+                return (
+                    <div className="space-y-6 no-print">
+                        <div className="flex justify-between items-center flex-wrap gap-4">
+                            <h2 className="text-2xl font-bold text-slate-800">Data Siswa</h2>
+                            <div>
+                                <input type="file" accept=".csv" id="csvInput" className="hidden" onChange={handleImportCSV} />
+                                <label htmlFor="csvInput" className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer"><FileCsv className="inline w-4 h-4"/> Import CSV</label>
+                            </div>
+                        </div>
+                        <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
+                            <div className="flex-1 min-w-[120px]"><label className="block text-xs text-slate-500 mb-1">NIS</label><input value={form.nis} onChange={e=>setForm({...form, nis: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="1001"/></div>
+                            <div className="flex-1 min-w-[180px]"><label className="block text-xs text-slate-500 mb-1">Nama</label><input value={form.nama} onChange={e=>setForm({...form, nama: e.target.value})} required className="w-full border rounded p-2 text-sm"/></div>
+                            <div className="flex-1 min-w-[100px]"><label className="block text-xs text-slate-500 mb-1">Kelas</label><input value={form.kelas} onChange={e=>setForm({...form, kelas: e.target.value})} required className="w-full border rounded p-2 text-sm"/></div>
+                            <div className="flex-1 min-w-[150px]"><label className="block text-xs text-slate-500 mb-1">No WA</label><input value={form.noWa} onChange={e=>setForm({...form, noWa: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="0812..."/></div>
+                            <button type="submit" className="bg-emerald-600 text-white px-4 py-2 rounded">Tambah</button>
+                        </form>
+                        <table className="w-full text-left bg-white rounded-xl shadow-sm"><thead className="bg-slate-50"><tr><th className="p-4">NIS</th><th className="p-4">Nama</th><th className="p-4">Kelas</th><th className="p-4">No WA</th><th className="p-4">Aksi</th></tr></thead><tbody>{siswaList.map(s => <tr key={s.id} className="border-b"><td className="p-4">{s.nis}</td><td className="p-4">{s.nama}</td><td className="p-4">{s.kelas}</td><td className="p-4">{s.noWa || '-'}</td><td className="p-4"><button onClick={() => handleDelete(s.id)} className="text-red-500">Hapus</button></td></tr>)}</tbody></table>
+                    </div>
+                );
+            };
+
+            // --- SCANNER ASLI GURU ---
+            const GuruScanner = () => {
+                const [scanResult, setScanResult] = useState(null);
+                const [isCameraActive, setIsCameraActive] = useState(false);
+                
+                const lastScanRef = useRef(0);
+                const processScanRef = useRef(null);
+
+                // Gunakan useRef agar callback scanner selalu membaca data siswa terbaru
+                processScanRef.current = async (nis) => {
+                    const now = Date.now();
+                    if (now - lastScanRef.current < 4000) return; // Cegah scan dobel dalam 4 detik
+                    lastScanRef.current = now;
+
+                    const siswa = siswaList.find(s => s.nis == nis);
+                    if (siswa) {
+                        const tanggalHariIni = new Date().toISOString().split('T')[0];
+                        const waktuSekarang = new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+                        const sudahAbsen = absensiList.find(a => a.nis == siswa.nis && a.tanggal == tanggalHariIni);
+                        
+                        if (!sudahAbsen) {
+                            const newAbsen = { nis: siswa.nis, status: 'Hadir', waktu: waktuSekarang, tanggal: tanggalHariIni };
+                            await sendDataToSheet('addAbsensi', newAbsen);
+                            setScanResult({ success: true, message: `${siswa.nama} berhasil absen!`, data: siswa });
+                            
+                            // Eksekusi Notifikasi WA
+                            if (siswa.noWa && siswa.noWa.length > 5) {
+                                let formatted = siswa.noWa.replace(/\D/g, ''); 
+                                if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1); 
+                                const waText = `*[NOTIFIKASI ABSENSI SEKOLAH]*\n\nHalo Bapak/Ibu,\nSiswa a.n *${siswa.nama}* telah *Hadir* di sekolah pada tanggal ${tanggalHariIni} pukul ${waktuSekarang} WIB.\n\nTerima kasih.`;
+                                window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(waText)}`, '_blank');
+                            }
+                        } else {
+                            setScanResult({ success: false, message: `${siswa.nama} sudah absen hari ini.`, data: siswa });
+                        }
+                    } else {
+                        setScanResult({ success: false, message: `NIS ${nis} tidak ditemukan.`, data: {nis: nis, kelas: '-'} });
+                    }
+                    setTimeout(() => setScanResult(null), 4000);
+                };
+
+                useEffect(() => {
+                    let html5QrCode;
+                    if (isCameraActive) {
+                        // Memanggil API Kamera secara langsung untuk mencegah bug macet
+                        html5QrCode = new window.Html5Qrcode("qr-reader");
+                        html5QrCode.start(
+                            { facingMode: "environment" }, // Paksa pakai kamera belakang HP
+                            { fps: 10, qrbox: { width: 250, height: 250 } },
+                            (decodedText) => {
+                                if (processScanRef.current) processScanRef.current(decodedText);
+                            },
+                            (errorMessage) => {
+                                // diabaikan karena ini me-log error frame per frame ketika QR tidak terdeteksi
+                            }
+                        ).catch((err) => {
+                            console.error("Kamera error:", err);
+                            alert("Kamera gagal diakses. Pastikan Anda mengizinkan akses kamera (Permission) dan mengakses web melalui link HTTPS.");
+                            setIsCameraActive(false);
+                        });
+                    }
+                    
+                    return () => {
+                        if (html5QrCode && html5QrCode.isScanning) {
+                            html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
+                        }
+                    };
+                }, [isCameraActive]);
+
+                return (
+                    <div className="space-y-6 max-w-2xl mx-auto no-print pb-4">
+                        <h2 className="text-2xl font-bold text-slate-800 text-center">Mode Scanner Guru</h2>
+                        
+                        <div className="bg-white rounded-2xl p-4 shadow-xl border border-slate-200 text-center relative">
+                            {!isCameraActive ? (
+                                <div className="py-12">
+                                    <Camera className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                                    <p className="text-slate-500 mb-6">Kamera belum aktif. Pastikan browser Anda memiliki Izin Kamera.</p>
+                                    <button onClick={() => setIsCameraActive(true)} className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 font-medium shadow-md transition">
+                                        Mulai Scan Kamera
+                                    </button>
+                                </div>
+                            ) : (
+                                <div>
+                                    <div id="qr-reader" className="w-full max-w-sm mx-auto overflow-hidden rounded-lg mb-4 bg-black"></div>
+                                    <button onClick={() => setIsCameraActive(false)} className="text-red-500 font-medium hover:bg-red-50 px-4 py-2 rounded-lg transition mt-2 border border-red-500">
+                                        Tutup Kamera
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {scanResult && (
+                                <div className={`mt-4 p-4 rounded-lg flex items-center gap-3 ${scanResult.success ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                    {scanResult.success ? <CheckCircle className="w-6 h-6 shrink-0" /> : <AlertCircle className="w-6 h-6 shrink-0" />}
+                                    <div className="text-left">
+                                        <p className="font-bold">{scanResult.message}</p>
+                                        <p className="text-sm opacity-90">{scanResult.data.nis} - Kelas {scanResult.data.kelas}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderContent = () => {
+                const LoadingOverlay = () => isLoading && (
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-blue-600 font-medium z-50 no-print">
+                        <div className="spinner"></div> Sinkronisasi...
+                    </div>
+                );
+
+                return (
+                    <>
+                        <LoadingOverlay />
+                        {(() => {
+                            switch (role) {
+                                case 'admin':
+                                    if (activeTab === 'dashboard') return <AdminDashboard />;
+                                    if (activeTab === 'data_siswa') return <AdminDataSiswa />;
+                                    if (activeTab === 'cetak_qr') return <AdminCetakQR />;
+                                    if (activeTab === 'data_guru') return <AdminDataGuru />;
+                                    return <AdminDashboard />;
+                                case 'guru':
+                                    if (activeTab === 'dashboard') return <GuruMonitoring />;
+                                    if (activeTab === 'scanner') return <GuruScanner />;
+                                    if (activeTab === 'monitoring') return <GuruMonitoring />;
+                                    return <GuruMonitoring />;
+                                case 'ortu':
+                                    if (activeTab === 'dashboard') return <OrtuDashboard />;
+                                    if (activeTab === 'form_izin') return <OrtuFormIzin />;
+                                    return <OrtuDashboard />;
+                                default: return <div>Pilih Menu</div>;
+                            }
+                        })()}
+                    </>
+                );
+            };
+
+            return (
+                <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
+                    <Sidebar />
+                    {/* Tambahan pb-16 untuk memberikan ruang bagi Bottom Nav pada HP */}
+                    <div className="flex-1 flex flex-col h-full overflow-hidden relative pb-16 md:pb-0">
+                        {/* Header di HP sekarang hanya menampilkan judul dan tombol keluar */}
+                        <header className="md:hidden bg-white border-b border-slate-200 p-4 flex justify-between items-center z-30 relative shadow-sm">
+                            <div className="flex items-center gap-2 font-bold text-slate-800">
+                                <QrCode className="text-blue-600 w-6 h-6" /> EduQR
+                            </div>
+                            <button onClick={() => setRole(null)} className="text-red-500 flex items-center justify-center p-2 rounded-full hover:bg-red-50 transition">
+                                <LogOut className="w-5 h-5" />
+                            </button>
+                        </header>
+                        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+                            <div className="max-w-6xl mx-auto">
+                                {renderContent()}
+                            </div>
+                        </main>
+                    </div>
+                    
+                    {/* Bottom Navigation Bar ala Shopee KHUSUS MOBILE */}
+                    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around items-center h-16 z-50 px-2 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+                        {getMenuItems(role).map(item => {
+                            const IconComp = item.icon;
+                            const isActive = activeTab === item.id;
+                            return (
+                                <button 
+                                    key={item.id} 
+                                    onClick={() => setActiveTab(item.id)} 
+                                    className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors ${isActive ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    <IconComp className={`w-5 h-5 ${isActive ? 'scale-110 transition-transform' : ''}`} />
+                                    <span className="text-[10px] font-semibold">{item.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
