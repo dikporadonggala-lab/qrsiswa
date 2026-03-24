@@ -5,17 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Absensi QR Code</title>
     
+    <!-- CSS & Frameworks -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- React & Recharts -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
     <script src="https://unpkg.com/react-is@18.2.0/umd/react-is.production.min.js"></script>
     <script src="https://unpkg.com/recharts@2.10.4/umd/Recharts.js"></script>
     
+    <!-- Library Tambahan (CSV & QR Scanner Asli) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
+    <!-- Babel untuk JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -25,10 +30,13 @@
         @media print {
             body { background-color: white !important; }
             .no-print { display: none !important; }
-            .print-only { display: block !important; }
             #print-section { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: white; }
             .page-break { page-break-after: always; margin: 0; border: none; box-shadow: none; }
         }
+        
+        /* Merapikan border bawaan library kamera */
+        #qr-reader { border: none !important; border-radius: 12px; overflow: hidden; }
+        #qr-reader video { object-fit: cover; border-radius: 12px; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -39,18 +47,17 @@
         const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } = window.Recharts;
 
         // =========================================================================
-        // MASUKKAN URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI
+        // MASUKKAN URL WEB APP GOOGLE APPS SCRIPT (YANG BARU DI-DEPLOY) DI SINI
         // =========================================================================
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbzEI54o2BLEiqbPqMrboCUOTd4GLNhBk7-PBeoHPYNrXqHNuSRZth13hm2acmmmFPUb1g/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbzQTBGZP2xBJTaLoF6Eo65e2xaVxAd4G5HZzDBfupKMaYvIzmjI7CYoN1cJ43osRphl_g/exec";
 
+        // --- ICONS (FontAwesome Wrapper) ---
         const IconWrapper = ({ name, className = "" }) => {
             let sizeClass = "text-base";
             if (className.includes('w-4')) sizeClass = "text-sm";
             if (className.includes('w-5')) sizeClass = "text-lg";
             if (className.includes('w-6')) sizeClass = "text-xl";
             if (className.includes('w-8')) sizeClass = "text-3xl";
-            if (className.includes('w-12')) sizeClass = "text-5xl";
-            if (className.includes('w-16')) sizeClass = "text-7xl";
             return <i className={`fa-solid fa-${name} ${className} ${sizeClass} flex items-center justify-center`}></i>;
         };
 
@@ -69,7 +76,6 @@
         const X = (p) => <IconWrapper name="xmark" {...p} />;
         const Check = (p) => <IconWrapper name="check" {...p} />;
         const AlertCircle = (p) => <IconWrapper name="circle-exclamation" {...p} />;
-        const Calendar = (p) => <IconWrapper name="calendar-days" {...p} />;
         const UserTie = (p) => <IconWrapper name="user-tie" {...p} />;
         const Print = (p) => <IconWrapper name="print" {...p} />;
         const FileCsv = (p) => <IconWrapper name="file-csv" {...p} />;
@@ -88,15 +94,384 @@
             ];
             if (role === 'ortu') return [
                 { id: 'dashboard', icon: Home, label: 'Beranda' },
-                { id: 'form_izin', icon: Upload, label: 'Izin' }
+                { id: 'form_izin', icon: Upload, label: 'Izin/Sakit' } // Menu Khusus Ortu
             ];
             return [];
         };
 
+        // =========================================================================
+        // KOMPONEN-KOMPONEN APLIKASI
+        // =========================================================================
+
+        const AdminDashboard = ({ siswaList, absensiList, fetchData }) => { 
+            const totalSiswa = siswaList.length;
+            const hadir = absensiList.filter(a => a.status === 'Hadir').length;
+            const izinSakit = absensiList.filter(a => a.status === 'Sakit' || a.status === 'Izin').length;
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-slate-800">Dashboard Global</h2>
+                        <button onClick={fetchData} className="bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded text-sm font-medium"><Clock className="inline w-4 h-4 mr-1"/> Refresh</button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4"><div className="p-4 rounded-full bg-blue-100 text-blue-600"><Users className="w-6 h-6" /></div><div><p className="text-sm text-slate-500 font-medium">Total Siswa</p><p className="text-2xl font-bold text-slate-800">{totalSiswa}</p></div></div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4"><div className="p-4 rounded-full bg-emerald-100 text-emerald-600"><CheckCircle className="w-6 h-6" /></div><div><p className="text-sm text-slate-500 font-medium">Hadir Hari Ini</p><p className="text-2xl font-bold text-slate-800">{hadir}</p></div></div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4"><div className="p-4 rounded-full bg-amber-100 text-amber-600"><Clock className="w-6 h-6" /></div><div><p className="text-sm text-slate-500 font-medium">Izin / Sakit</p><p className="text-2xl font-bold text-slate-800">{izinSakit}</p></div></div>
+                    </div>
+                </div>
+            ); 
+        };
+
+        const AdminCetakQR = ({ siswaList }) => { 
+            const chunked = [];
+            for (let i = 0; i < siswaList.length; i += 10) { chunked.push(siswaList.slice(i, i + 10)); }
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center no-print">
+                        <h2 className="text-2xl font-bold text-slate-800">Cetak QR Code Siswa</h2>
+                        <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-lg hover:bg-slate-900 flex items-center gap-2 shadow-md transition"><Print className="w-5 h-5" /> Cetak (A4)</button>
+                    </div>
+                    <div className="no-print bg-amber-50 text-amber-800 p-4 rounded-xl border border-amber-200 text-sm">
+                        <AlertCircle className="inline w-4 h-4 mr-1" /><strong>Panduan Cetak:</strong> Set <b>Paper Size</b> ke <b>A4</b>, matikan <b>Headers and footers</b>, set <b>Margins</b> ke <b>None</b>.
+                    </div>
+                    <div id="print-section">
+                        {chunked.length === 0 && <p className="text-center text-slate-500 my-10 no-print">Belum ada data siswa.</p>}
+                        {chunked.map((pageSiswa, pageIndex) => (
+                            <div key={pageIndex} className="page-break w-[210mm] h-[297mm] p-6 mx-auto bg-white border border-gray-300 shadow-xl mb-8 grid grid-cols-2 grid-rows-5 gap-4 relative box-border">
+                                {pageSiswa.map(s => (
+                                    <div key={s.nis} className="border-2 border-slate-800 rounded-2xl p-4 flex items-center gap-4 h-[50mm] overflow-hidden">
+                                        <div className="shrink-0 bg-white p-1 border border-slate-200 rounded-lg"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${s.nis}`} alt="QR" className="w-24 h-24 object-contain" crossOrigin="anonymous" /></div>
+                                        <div className="flex-1 min-w-0"><h3 className="font-bold text-lg text-slate-900 truncate leading-tight mb-1">{s.nama}</h3><div className="text-sm font-medium text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded mb-1">NIS: {s.nis}</div><br/><div className="text-sm font-medium text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded">Kelas: {s.kelas}</div></div>
+                                    </div>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ); 
+        };
+
+        const AdminDataSiswa = ({ siswaList, sendDataToSheet, isLoading }) => {
+            const [form, setForm] = useState({ nis: '', nama: '', kelas: '', noWa: '' });
+            const handleSubmit = async (e) => { e.preventDefault(); await sendDataToSheet('addSiswa', form); setForm({ nis: '', nama: '', kelas: '', noWa: '' }); };
+            const handleDelete = async (id) => { if(confirm("Hapus?")) await sendDataToSheet('deleteSiswa', { id }); };
+            const handleImportCSV = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    window.Papa.parse(file, { header: true, skipEmptyLines: true, complete: async (results) => {
+                        if(results.data.length > 0) { if(confirm(`Ditemukan ${results.data.length} data. Import?`)) { await sendDataToSheet('addSiswaBulk', results.data); e.target.value = ''; } }
+                    }});
+                }
+            };
+            return (
+                <div className="space-y-6 no-print">
+                    <div className="flex justify-between items-center flex-wrap gap-4">
+                        <h2 className="text-2xl font-bold text-slate-800">Data Siswa</h2>
+                        <div>
+                            <input type="file" accept=".csv" id="csvInput" className="hidden" onChange={handleImportCSV} />
+                            <label htmlFor="csvInput" className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer"><FileCsv className="inline w-4 h-4"/> Import CSV</label>
+                        </div>
+                    </div>
+                    <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
+                        <div className="flex-1 min-w-[120px]"><label className="block text-xs text-slate-500 mb-1">NIS</label><input value={form.nis} onChange={e=>setForm({...form, nis: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="1001"/></div>
+                        <div className="flex-1 min-w-[180px]"><label className="block text-xs text-slate-500 mb-1">Nama</label><input value={form.nama} onChange={e=>setForm({...form, nama: e.target.value})} required className="w-full border rounded p-2 text-sm"/></div>
+                        <div className="flex-1 min-w-[100px]"><label className="block text-xs text-slate-500 mb-1">Kelas</label><input value={form.kelas} onChange={e=>setForm({...form, kelas: e.target.value})} required className="w-full border rounded p-2 text-sm"/></div>
+                        <div className="flex-1 min-w-[150px]"><label className="block text-xs text-slate-500 mb-1">No WA Ortu</label><input value={form.noWa} onChange={e=>setForm({...form, noWa: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="0812..."/></div>
+                        <button type="submit" disabled={isLoading} className="bg-emerald-600 disabled:bg-slate-400 text-white px-4 py-2 rounded">Tambah</button>
+                    </form>
+                    <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-100">
+                        <table className="w-full text-left whitespace-nowrap"><thead className="bg-slate-50"><tr><th className="p-4">NIS</th><th className="p-4">Nama</th><th className="p-4">Kelas</th><th className="p-4">No WA</th><th className="p-4">Aksi</th></tr></thead><tbody>{siswaList.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-slate-500">Data Kosong</td></tr>}{siswaList.map(s => <tr key={s.id} className="border-b"><td className="p-4">{s.nis}</td><td className="p-4">{s.nama}</td><td className="p-4">{s.kelas}</td><td className="p-4">{s.noWa || '-'}</td><td className="p-4"><button onClick={() => handleDelete(s.id)} className="text-red-500 hover:text-red-700 bg-red-50 px-3 py-1 rounded">Hapus</button></td></tr>)}</tbody></table>
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminDataGuru = ({ guruList, sendDataToSheet, isLoading }) => {
+            const [form, setForm] = useState({ nip: '', nama: '', mapel: '', noWa: '' });
+            const handleSubmit = async (e) => { e.preventDefault(); await sendDataToSheet('addGuru', form); setForm({ nip: '', nama: '', mapel: '', noWa: '' }); };
+            const handleDelete = async (id) => { if(confirm("Hapus data guru ini?")) await sendDataToSheet('deleteGuru', { id }); };
+            return (
+                <div className="space-y-6 no-print">
+                    <h2 className="text-2xl font-bold text-slate-800">Manajemen Data Guru</h2>
+                    <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
+                        <div className="flex-1 min-w-[120px]"><label className="block text-xs text-slate-500 mb-1">NIP</label><input value={form.nip} onChange={e=>setForm({...form, nip: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="NIP..."/></div>
+                        <div className="flex-1 min-w-[180px]"><label className="block text-xs text-slate-500 mb-1">Nama Guru</label><input value={form.nama} onChange={e=>setForm({...form, nama: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="Nama Lengkap"/></div>
+                        <div className="flex-1 min-w-[120px]"><label className="block text-xs text-slate-500 mb-1">Mata Pelajaran</label><input value={form.mapel} onChange={e=>setForm({...form, mapel: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="Matematika"/></div>
+                        <div className="flex-1 min-w-[150px]"><label className="block text-xs text-slate-500 mb-1">No WA Guru</label><input value={form.noWa} onChange={e=>setForm({...form, noWa: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="0812..."/></div>
+                        <button type="submit" disabled={isLoading} className="bg-emerald-600 disabled:bg-slate-400 text-white px-4 py-2 rounded">Tambah</button>
+                    </form>
+                    <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-100">
+                        <table className="w-full text-left whitespace-nowrap"><thead className="bg-slate-50"><tr><th className="p-4">NIP</th><th className="p-4">Nama Guru</th><th className="p-4">Mapel</th><th className="p-4">No WA</th><th className="p-4">Aksi</th></tr></thead><tbody>{guruList.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-slate-500">Data Kosong</td></tr>}{guruList.map(guru => <tr key={guru.id} className="border-b"><td className="p-4">{guru.nip}</td><td className="p-4 font-medium">{guru.nama}</td><td className="p-4">{guru.mapel}</td><td className="p-4">{guru.noWa || '-'}</td><td className="p-4"><button onClick={() => handleDelete(guru.id)} className="text-red-500 hover:text-red-700 bg-red-50 px-3 py-1 rounded">Hapus</button></td></tr>)}</tbody></table>
+                    </div>
+                </div>
+            );
+        };
+
+        const GuruMonitoring = ({ siswaList, absensiList }) => {
+            const tanggalHariIni = new Date().toISOString().split('T')[0];
+            return (
+                <div className="space-y-6 no-print">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-slate-800">Monitoring Absensi</h2>
+                        <span className="bg-blue-100 text-blue-800 px-4 py-1.5 rounded-full text-sm font-semibold">{new Date().toLocaleDateString('id-ID')}</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                            <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><CheckCircle className="text-emerald-500 w-5 h-5"/> Sudah Hadir</h3>
+                            <ul className="space-y-3">
+                                {siswaList.filter(s => absensiList.find(a => a.nis == s.nis && a.tanggal === tanggalHariIni && a.status === 'Hadir')).map(siswa => {
+                                    const abs = absensiList.find(a => a.nis == s.nis && a.tanggal === tanggalHariIni);
+                                    return <li key={siswa.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg"><span className="font-medium text-slate-800">{siswa.nama} ({siswa.kelas})</span><span className="text-sm text-emerald-600 bg-emerald-100 px-2 py-1 rounded-md">{abs.waktu} WIB</span></li>
+                                })}
+                            </ul>
+                        </div>
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                            <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><XCircle className="text-red-500 w-5 h-5"/> Belum Hadir / Izin</h3>
+                            <ul className="space-y-3">
+                                {siswaList.filter(s => !absensiList.find(a => a.nis == s.nis && a.tanggal === tanggalHariIni && a.status === 'Hadir')).map(siswa => {
+                                    const abs = absensiList.find(a => a.nis == s.nis && a.tanggal === tanggalHariIni);
+                                    return <li key={siswa.id} className="flex justify-between items-center p-3 bg-red-50 rounded-lg"><span className="font-medium text-slate-800">{siswa.nama} ({siswa.kelas})</span>{abs ? <span className="text-sm text-amber-600 font-semibold">{abs.status}</span> : <span className="text-sm text-red-600 font-semibold">Belum Absen</span>}</li>
+                                })}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const OrtuDashboard = ({ siswaList, absensiList }) => { 
+            const anak = siswaList[0] || { nis: 'Belum Ada', nama: 'Siswa Contoh', kelas: '-' };
+            const absensiAnak = absensiList.filter(a => a.nis == anak.nis);
+            const hadir = absensiAnak.filter(a => a.status === 'Hadir').length;
+            const sakit = absensiAnak.filter(a => a.status === 'Sakit').length;
+            const izin = absensiAnak.filter(a => a.status === 'Izin').length;
+            const alpa = Math.max(0, 30 - (hadir + sakit + izin));
+
+            const dataPie = [
+                { name: 'Hadir', value: hadir || 1, color: '#10B981' },
+                { name: 'Sakit', value: sakit || 0, color: '#F59E0B' },
+                { name: 'Izin', value: izin || 0, color: '#3B82F6' },
+                { name: 'Alpa', value: alpa || 0, color: '#EF4444' },
+            ];
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-800">Halo, Orang Tua {anak.nama}</h2>
+                            <p className="text-slate-500">NIS: {anak.nis} | Kelas: {anak.kelas}</p>
+                        </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <h3 className="text-lg font-bold text-slate-800 mb-4">Persentase Kehadiran Semester Ini</h3>
+                        <div className="h-64 flex justify-center">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={dataPie.filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                        {dataPie.filter(d => d.value > 0).map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                                    </Pie>
+                                    <Tooltip /><Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+            ); 
+        };
+
+        // =========================================================================
+        // FORM KETIDAKHADIRAN ORANG TUA 
+        // =========================================================================
+        const OrtuFormIzin = ({ siswaList, sendDataToSheet, isLoading }) => {
+            const [statusSubmit, setStatusSubmit] = useState(false);
+            const [form, setForm] = useState({ tanggal: '', status: 'Sakit', keterangan: '' });
+            const [fileObj, setFileObj] = useState(null);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                const anak = siswaList[0] || { nis: '1001' }; 
+                let payload = { nis: anak.nis, status: form.status, keterangan: form.keterangan, tanggal: form.tanggal };
+
+                if (fileObj) {
+                    const reader = new FileReader();
+                    reader.onload = async () => {
+                        payload.fileBase64 = reader.result.split(',')[1];
+                        payload.mimeType = fileObj.type;
+                        payload.fileName = fileObj.name;
+                        await sendDataToSheet('addIzin', payload);
+                        resetForm();
+                    };
+                    reader.readAsDataURL(fileObj);
+                } else {
+                    await sendDataToSheet('addIzin', payload);
+                    resetForm();
+                }
+            };
+
+            const resetForm = () => {
+                setStatusSubmit(true);
+                setForm({ tanggal: '', status: 'Sakit', keterangan: '' });
+                setFileObj(null);
+                setTimeout(() => setStatusSubmit(false), 4000);
+            }
+
+            return (
+                <div className="space-y-6 max-w-2xl mx-auto pb-4">
+                    <h2 className="text-2xl font-bold text-slate-800">Form Ketidakhadiran</h2>
+                    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-5">
+                        {statusSubmit && (
+                            <div className="bg-emerald-50 text-emerald-600 p-3 rounded-lg flex items-center gap-2 text-sm font-medium">
+                                <Check className="w-5 h-5" /> Data Ketidakhadiran berhasil dikirim ke guru.
+                            </div>
+                        )}
+                        <div><label className="block text-sm font-medium text-slate-700 mb-1">Tanggal</label><input value={form.tanggal} onChange={e=>setForm({...form, tanggal: e.target.value})} type="date" className="w-full border border-slate-300 rounded-lg p-2.5" required /></div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Jenis Keterangan</label>
+                            <select value={form.status} onChange={e=>setForm({...form, status: e.target.value})} className="w-full border border-slate-300 rounded-lg p-2.5">
+                                <option value="Sakit">Sakit</option>
+                                <option value="Izin">Izin</option>
+                            </select>
+                        </div>
+                        <div><label className="block text-sm font-medium text-slate-700 mb-1">Keterangan / Alasan</label><textarea value={form.keterangan} onChange={e=>setForm({...form, keterangan: e.target.value})} rows="3" className="w-full border border-slate-300 rounded-lg p-2.5"></textarea></div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Upload Bukti (Surat Dokter / Dokumen)</label>
+                            <div className="relative border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:bg-slate-50 transition flex flex-col items-center">
+                                <input type="file" onChange={e => setFileObj(e.target.files[0])} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/*,application/pdf" />
+                                <Upload className="w-8 h-8 text-slate-400 mb-2" />
+                                <p className="text-sm text-slate-500">{fileObj ? <span className="text-blue-600 font-bold">{fileObj.name}</span> : 'Klik atau seret file kesini (JPG, PNG, PDF)'}</p>
+                            </div>
+                        </div>
+                        <button type="submit" disabled={isLoading} className="w-full flex justify-center items-center bg-blue-600 disabled:bg-slate-400 text-white font-medium py-3 rounded-xl hover:bg-blue-700 transition">
+                            {isLoading ? <div className="spinner w-5 h-5 border-white"></div> : 'Kirim Pengajuan'}
+                        </button>
+                    </form>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // MODE SCANNER GURU (CONTINUOUS SCANING / ANTI MATI)
+        // =========================================================================
+        const GuruScanner = ({ siswaList, absensiList, sendDataToSheet }) => {
+            const [scanMessage, setScanMessage] = useState(null);
+            const [isCameraActive, setIsCameraActive] = useState(false);
+            
+            // useRef digunakan agar variabel ini tahan terhadap re-render
+            const isProcessingRef = useRef(false);
+
+            // Fungsi yang akan tereksekusi ketika barcode berhasil dibaca
+            const onScanSuccess = async (decodedText) => {
+                // Jika sedang memproses data atau masih memunculkan notif sukses, abaikan scan agar tidak dobel
+                if (isProcessingRef.current) return;
+                
+                isProcessingRef.current = true;
+                const nis = decodedText;
+                const siswa = siswaList.find(s => s.nis == nis);
+                
+                if (siswa) {
+                    const tanggalHariIni = new Date().toISOString().split('T')[0];
+                    const waktuSekarang = new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+                    const sudahAbsen = absensiList.find(a => a.nis == siswa.nis && a.tanggal == tanggalHariIni);
+                    
+                    if (!sudahAbsen) {
+                        const newAbsen = { nis: siswa.nis, status: 'Hadir', waktu: waktuSekarang, tanggal: tanggalHariIni };
+                        
+                        // 1. Munculkan Notif Berhasil di HP (Kamera di belakang tetap menyala)
+                        setScanMessage({ success: true, message: `${siswa.nama} berhasil absen!`, kelas: siswa.kelas });
+                        
+                        // 2. Kirim data ke Google Sheets (Dan otomatis akan mengirim WA dari backend)
+                        await sendDataToSheet('addAbsensi', newAbsen);
+                    } else {
+                        setScanMessage({ success: false, message: `${siswa.nama} SUDAH ABSEN!`, kelas: siswa.kelas });
+                    }
+                } else {
+                    setScanMessage({ success: false, message: `NIS ${nis} TIDAK DIKENAL!`, kelas: '-' });
+                }
+
+                // Setelah 3 detik, hilangkan pesan sukses dan ijinkan kamera scan siswa berikutnya
+                setTimeout(() => {
+                    setScanMessage(null);
+                    isProcessingRef.current = false;
+                }, 3000); 
+            };
+
+            // Mengaktifkan Library Kamera
+            useEffect(() => {
+                let html5QrCode;
+                if (isCameraActive) {
+                    // Gunakan Html5Qrcode murni (Bukan scanner bawaan UI yang sering nge-bug)
+                    html5QrCode = new window.Html5Qrcode("qr-reader");
+                    html5QrCode.start(
+                        { facingMode: "environment" }, // Paksa gunakan kamera belakang HP
+                        { fps: 10, qrbox: { width: 250, height: 250 } },
+                        (decodedText) => onScanSuccess(decodedText),
+                        (error) => { /* Abaikan error tiap frame yang tidak ada QR-nya */ } 
+                    ).catch((err) => {
+                        alert("Kamera gagal diakses. Pastikan Izin Kamera browser aktif dan web dibuka lewat HTTPS.");
+                        setIsCameraActive(false);
+                    });
+                }
+                
+                return () => {
+                    if (html5QrCode && html5QrCode.isScanning) {
+                        html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
+                    }
+                };
+            }, [isCameraActive, siswaList, absensiList]);
+
+            return (
+                <div className="space-y-6 max-w-2xl mx-auto no-print pb-10">
+                    <h2 className="text-2xl font-bold text-slate-800 text-center">Mode Scanner Guru</h2>
+                    
+                    <div className="bg-white rounded-2xl p-4 shadow-xl border border-slate-200 text-center relative overflow-hidden">
+                        {!isCameraActive ? (
+                            <div className="py-12">
+                                <Camera className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                                <p className="text-slate-500 mb-6">Tekan tombol di bawah untuk mulai mengabsen siswa.</p>
+                                <button onClick={() => setIsCameraActive(true)} className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 font-medium shadow-md transition">
+                                    Nyalakan Kamera
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="relative">
+                                {/* Jendela Kamera */}
+                                <div id="qr-reader" className="w-full max-w-sm mx-auto overflow-hidden rounded-lg bg-black min-h-[300px]"></div>
+                                
+                                <button onClick={() => setIsCameraActive(false)} className="text-red-500 font-medium hover:bg-red-50 px-4 py-2 rounded-lg transition border border-red-500 mt-4">
+                                    Matikan Kamera
+                                </button>
+                                
+                                {/* Overlay / Notif Jeda 3 Detik saat Scan Berhasil */}
+                                {scanMessage && (
+                                    <div className="absolute inset-0 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center rounded-lg z-10 p-6 animate-in fade-in duration-300">
+                                        {scanMessage.success ? (
+                                            <div className="bg-emerald-100 text-emerald-600 p-4 rounded-full mb-4 animate-bounce">
+                                                <CheckCircle className="w-16 h-16" />
+                                            </div>
+                                        ) : (
+                                            <div className="bg-red-100 text-red-600 p-4 rounded-full mb-4">
+                                                <XCircle className="w-16 h-16" />
+                                            </div>
+                                        )}
+                                        <h3 className={`text-xl font-bold mb-2 ${scanMessage.success ? 'text-emerald-700' : 'text-red-700'}`}>
+                                            {scanMessage.message}
+                                        </h3>
+                                        <p className="text-slate-500 font-medium">Kelas: {scanMessage.kelas}</p>
+                                        <p className="text-xs text-slate-400 mt-6 animate-pulse">Menyiapkan kamera untuk siswa antrean berikutnya...</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // =========================================================================
+        // ROOT COMPONENT (App)
+        // =========================================================================
         function App() {
             const [role, setRole] = useState(null);
             const [activeTab, setActiveTab] = useState('dashboard');
-
             const [isLoading, setIsLoading] = useState(false);
             const [siswaList, setSiswaList] = useState([]);
             const [guruList, setGuruList] = useState([]);
@@ -118,392 +493,77 @@
             };
 
             const sendDataToSheet = async (action, payload) => {
-                if (GAS_URL === "ISI_URL_WEB_APP_ANDA_DISINI") {
-                    alert("Harap isi GAS_URL di kode HTML terlebih dahulu!");
-                    return false;
-                }
+                if (GAS_URL === "ISI_URL_WEB_APP_ANDA_DISINI") { alert("Isi GAS_URL di index.html!"); return false; }
                 setIsLoading(true);
                 try {
-                    const res = await fetch(GAS_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify({ action, payload })
-                    });
+                    const res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, payload }) });
                     const json = await res.json();
-                    if(json.success) await fetchData(); // Refresh data otomatis jika sukses
+                    if(json.success) await fetchData(); 
                     setIsLoading(false);
                     return json.success;
                 } catch(e) { 
-                    console.error("Gagal mengirim data", e); 
-                    setIsLoading(false);
-                    return false;
+                    setIsLoading(false); return false;
                 }
             };
 
-            useEffect(() => {
-                if(role) fetchData();
-            }, [role]);
-
-            const handleLogin = (selectedRole) => {
-                setRole(selectedRole);
-                setActiveTab(selectedRole === 'guru' ? 'scanner' : 'dashboard');
-            };
+            useEffect(() => { if(role) fetchData(); }, [role]);
 
             if (!role) {
                 return (
                     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
                         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
-                            <div className="flex justify-center mb-6">
-                                <div className="bg-blue-600 p-4 rounded-full w-20 h-20 flex items-center justify-center"><QrCode className="text-white w-12 h-12" /></div>
-                            </div>
+                            <div className="flex justify-center mb-6"><div className="bg-blue-600 p-4 rounded-full w-20 h-20 flex items-center justify-center"><QrCode className="text-white w-12 h-12" /></div></div>
                             <h1 className="text-2xl font-bold text-slate-800 mb-2">Sistem Absensi QR</h1>
                             <p className="text-slate-500 mb-6">Pilih peran untuk masuk</p>
-                            
                             <div className="space-y-4">
-                                <button onClick={() => handleLogin('admin')} className="w-full flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-900 text-white p-4 rounded-xl transition"><Users className="w-5 h-5" /> Admin</button>
-                                <button onClick={() => handleLogin('guru')} className="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl transition"><FileText className="w-5 h-5" /> Guru Scanner</button>
-                                <button onClick={() => handleLogin('ortu')} className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-xl transition"><Bell className="w-5 h-5" /> Orang Tua</button>
+                                <button onClick={() => {setRole('admin'); setActiveTab('dashboard');}} className="w-full flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-900 text-white p-4 rounded-xl transition"><Users className="w-5 h-5" /> Admin</button>
+                                <button onClick={() => {setRole('guru'); setActiveTab('scanner');}} className="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl transition"><FileText className="w-5 h-5" /> Guru Scanner</button>
+                                <button onClick={() => {setRole('ortu'); setActiveTab('form_izin');}} className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-xl transition"><Bell className="w-5 h-5" /> Orang Tua</button>
                             </div>
                         </div>
                     </div>
                 );
             }
 
-            const Sidebar = () => {
-                return (
-                    <div className="hidden md:flex w-64 bg-slate-900 text-white flex-col h-full z-20 transition-all duration-300">
-                        <div className="p-6 flex items-center justify-between">
-                            <div className="flex items-center gap-3 font-bold text-xl">
-                                <QrCode className="text-blue-400 w-6 h-6" /> EduQR
-                            </div>
-                        </div>
-                        <div className="flex-1 px-4 space-y-2 mt-4">
-                            {getMenuItems(role).map(item => {
-                                const IconComp = item.icon;
-                                return (
-                                    <button
-                                        key={item.id}
-                                        onClick={() => setActiveTab(item.id)}
-                                        className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${activeTab === item.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                                    >
-                                        <IconComp className="w-5 h-5" /> {item.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        <div className="p-4 border-t border-slate-700">
-                            <button onClick={() => setRole(null)} className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-slate-800 rounded-lg transition-colors"><LogOut className="w-5 h-5" /> Keluar</button>
-                        </div>
+            const Sidebar = () => (
+                <div className="hidden md:flex w-64 bg-slate-900 text-white flex-col h-full z-20 transition-all duration-300 shadow-xl">
+                    <div className="p-6 flex items-center justify-between"><div className="flex items-center gap-3 font-bold text-xl"><QrCode className="text-blue-400 w-6 h-6" /> EduQR</div></div>
+                    <div className="flex-1 px-4 space-y-2 mt-4">
+                        {getMenuItems(role).map(item => {
+                            const IconComp = item.icon;
+                            return <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${activeTab === item.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}><IconComp className="w-5 h-5" /> {item.label}</button>
+                        })}
                     </div>
-                );
-            };
-
-            const AdminDashboard = () => { 
-                const totalSiswa = siswaList.length;
-                const hadir = absensiList.filter(a => a.status === 'Hadir').length;
-                const izinSakit = absensiList.filter(a => a.status === 'Sakit' || a.status === 'Izin').length;
-                
-                return (
-                    <div className="space-y-6">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-2xl font-bold text-slate-800">Dashboard Global</h2>
-                            <button onClick={fetchData} className="bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded text-sm font-medium"><Clock className="inline w-4 h-4 mr-1"/> Refresh</button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
-                                <div className="p-4 rounded-full bg-blue-100 text-blue-600"><Users className="w-6 h-6" /></div>
-                                <div><p className="text-sm text-slate-500 font-medium">Total Siswa</p><p className="text-2xl font-bold text-slate-800">{totalSiswa}</p></div>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
-                                <div className="p-4 rounded-full bg-emerald-100 text-emerald-600"><CheckCircle className="w-6 h-6" /></div>
-                                <div><p className="text-sm text-slate-500 font-medium">Hadir Hari Ini</p><p className="text-2xl font-bold text-slate-800">{hadir}</p></div>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
-                                <div className="p-4 rounded-full bg-amber-100 text-amber-600"><Clock className="w-6 h-6" /></div>
-                                <div><p className="text-sm text-slate-500 font-medium">Izin / Sakit</p><p className="text-2xl font-bold text-slate-800">{izinSakit}</p></div>
-                            </div>
-                        </div>
-                    </div>
-                ); 
-            };
-
-            const AdminCetakQR = () => { 
-                const chunked = [];
-                for (let i = 0; i < siswaList.length; i += 10) { chunked.push(siswaList.slice(i, i + 10)); }
-
-                return (
-                    <div className="space-y-6">
-                        <div className="flex justify-between items-center no-print">
-                            <h2 className="text-2xl font-bold text-slate-800">Cetak QR Code Siswa</h2>
-                            <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-lg hover:bg-slate-900 flex items-center gap-2 shadow-md transition">
-                                <Print className="w-5 h-5" /> Cetak (A4)
-                            </button>
-                        </div>
-                        
-                        <div className="no-print bg-amber-50 text-amber-800 p-4 rounded-xl border border-amber-200 text-sm">
-                            <AlertCircle className="inline w-4 h-4 mr-1" />
-                            <strong>Panduan Cetak:</strong> Saat jendela print muncul, set <b>Paper Size</b> ke <b>A4</b>, matikan <b>Headers and footers</b>, set <b>Margins</b> ke <b>None</b>.
-                        </div>
-
-                        <div id="print-section">
-                            {chunked.length === 0 && <p className="text-center text-slate-500 my-10 no-print">Belum ada data siswa.</p>}
-                            {chunked.map((pageSiswa, pageIndex) => (
-                                <div key={pageIndex} className="page-break w-[210mm] h-[297mm] p-6 mx-auto bg-white border border-gray-300 shadow-xl mb-8 grid grid-cols-2 grid-rows-5 gap-4 relative box-border">
-                                    {pageSiswa.map(s => (
-                                        <div key={s.nis} className="border-2 border-slate-800 rounded-2xl p-4 flex items-center gap-4 h-[50mm] overflow-hidden">
-                                            <div className="shrink-0 bg-white p-1 border border-slate-200 rounded-lg">
-                                                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${s.nis}`} alt="QR" className="w-24 h-24 object-contain" crossOrigin="anonymous" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className="font-bold text-lg text-slate-900 truncate leading-tight mb-1">{s.nama}</h3>
-                                                <div className="text-sm font-medium text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded mb-1">NIS: {s.nis}</div>
-                                                <br/>
-                                                <div className="text-sm font-medium text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded">Kelas: {s.kelas}</div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ); 
-            };
-
-            const AdminDataSiswa = () => {
-                const [form, setForm] = useState({ nis: '', nama: '', kelas: '', noWa: '' });
-                const handleSubmit = async (e) => { e.preventDefault(); await sendDataToSheet('addSiswa', form); setForm({ nis: '', nama: '', kelas: '', noWa: '' }); };
-                const handleDelete = async (id) => { if(confirm("Hapus?")) await sendDataToSheet('deleteSiswa', { id }); };
-                const handleImportCSV = (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        window.Papa.parse(file, { header: true, skipEmptyLines: true, complete: async (results) => {
-                            if(results.data.length > 0) {
-                                if(confirm(`Ditemukan ${results.data.length} data. Import?`)) {
-                                    await sendDataToSheet('addSiswaBulk', results.data); e.target.value = '';
-                                }
-                            }
-                        }});
-                    }
-                };
-                return (
-                    <div className="space-y-6 no-print">
-                        <div className="flex justify-between items-center flex-wrap gap-4">
-                            <h2 className="text-2xl font-bold text-slate-800">Data Siswa</h2>
-                            <div>
-                                <input type="file" accept=".csv" id="csvInput" className="hidden" onChange={handleImportCSV} />
-                                <label htmlFor="csvInput" className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer"><FileCsv className="inline w-4 h-4"/> Import CSV</label>
-                            </div>
-                        </div>
-                        <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
-                            <div className="flex-1 min-w-[120px]"><label className="block text-xs text-slate-500 mb-1">NIS</label><input value={form.nis} onChange={e=>setForm({...form, nis: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="1001"/></div>
-                            <div className="flex-1 min-w-[180px]"><label className="block text-xs text-slate-500 mb-1">Nama</label><input value={form.nama} onChange={e=>setForm({...form, nama: e.target.value})} required className="w-full border rounded p-2 text-sm"/></div>
-                            <div className="flex-1 min-w-[100px]"><label className="block text-xs text-slate-500 mb-1">Kelas</label><input value={form.kelas} onChange={e=>setForm({...form, kelas: e.target.value})} required className="w-full border rounded p-2 text-sm"/></div>
-                            <div className="flex-1 min-w-[150px]"><label className="block text-xs text-slate-500 mb-1">No WA Ortu</label><input value={form.noWa} onChange={e=>setForm({...form, noWa: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="0812..."/></div>
-                            <button type="submit" disabled={isLoading} className="bg-emerald-600 disabled:bg-slate-400 text-white px-4 py-2 rounded">Tambah</button>
-                        </form>
-                        <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-100">
-                            <table className="w-full text-left whitespace-nowrap"><thead className="bg-slate-50"><tr><th className="p-4">NIS</th><th className="p-4">Nama</th><th className="p-4">Kelas</th><th className="p-4">No WA</th><th className="p-4">Aksi</th></tr></thead><tbody>{siswaList.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-slate-500">Data Kosong</td></tr>}{siswaList.map(s => <tr key={s.id} className="border-b"><td className="p-4">{s.nis}</td><td className="p-4">{s.nama}</td><td className="p-4">{s.kelas}</td><td className="p-4">{s.noWa || '-'}</td><td className="p-4"><button onClick={() => handleDelete(s.id)} className="text-red-500 hover:text-red-700 bg-red-50 px-3 py-1 rounded">Hapus</button></td></tr>)}</tbody></table>
-                        </div>
-                    </div>
-                );
-            };
-
-            const AdminDataGuru = () => {
-                const [form, setForm] = useState({ nip: '', nama: '', mapel: '', noWa: '' });
-                const handleSubmit = async (e) => { e.preventDefault(); await sendDataToSheet('addGuru', form); setForm({ nip: '', nama: '', mapel: '', noWa: '' }); };
-                const handleDelete = async (id) => { if(confirm("Hapus data guru ini?")) await sendDataToSheet('deleteGuru', { id }); };
-                return (
-                    <div className="space-y-6 no-print">
-                        <h2 className="text-2xl font-bold text-slate-800">Manajemen Data Guru</h2>
-                        <form onSubmit={handleSubmit} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
-                            <div className="flex-1 min-w-[120px]"><label className="block text-xs text-slate-500 mb-1">NIP</label><input value={form.nip} onChange={e=>setForm({...form, nip: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="NIP..."/></div>
-                            <div className="flex-1 min-w-[180px]"><label className="block text-xs text-slate-500 mb-1">Nama Guru</label><input value={form.nama} onChange={e=>setForm({...form, nama: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="Nama Lengkap"/></div>
-                            <div className="flex-1 min-w-[120px]"><label className="block text-xs text-slate-500 mb-1">Mata Pelajaran</label><input value={form.mapel} onChange={e=>setForm({...form, mapel: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="Matematika"/></div>
-                            <div className="flex-1 min-w-[150px]"><label className="block text-xs text-slate-500 mb-1">No WA Guru</label><input value={form.noWa} onChange={e=>setForm({...form, noWa: e.target.value})} required className="w-full border rounded p-2 text-sm" placeholder="0812..."/></div>
-                            <button type="submit" disabled={isLoading} className="bg-emerald-600 disabled:bg-slate-400 text-white px-4 py-2 rounded">Tambah</button>
-                        </form>
-                        <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-100">
-                            <table className="w-full text-left whitespace-nowrap"><thead className="bg-slate-50"><tr><th className="p-4">NIP</th><th className="p-4">Nama Guru</th><th className="p-4">Mapel</th><th className="p-4">No WA</th><th className="p-4">Aksi</th></tr></thead><tbody>{guruList.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-slate-500">Data Kosong</td></tr>}{guruList.map(guru => <tr key={guru.id} className="border-b"><td className="p-4">{guru.nip}</td><td className="p-4 font-medium">{guru.nama}</td><td className="p-4">{guru.mapel}</td><td className="p-4">{guru.noWa || '-'}</td><td className="p-4"><button onClick={() => handleDelete(guru.id)} className="text-red-500 hover:text-red-700 bg-red-50 px-3 py-1 rounded">Hapus</button></td></tr>)}</tbody></table>
-                        </div>
-                    </div>
-                );
-            };
-
-            const GuruMonitoring = () => {
-                const tanggalHariIni = new Date().toISOString().split('T')[0];
-                return (
-                    <div className="space-y-6 no-print">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-2xl font-bold text-slate-800">Monitoring Absensi</h2>
-                            <span className="bg-blue-100 text-blue-800 px-4 py-1.5 rounded-full text-sm font-semibold">{new Date().toLocaleDateString('id-ID')}</span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-                                <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><CheckCircle className="text-emerald-500 w-5 h-5"/> Sudah Hadir</h3>
-                                <ul className="space-y-3">
-                                    {siswaList.filter(s => absensiList.find(a => a.nis == s.nis && a.status === 'Hadir' && a.tanggal === tanggalHariIni)).map(siswa => {
-                                        const abs = absensiList.find(a => a.nis == siswa.nis && a.tanggal === tanggalHariIni);
-                                        return <li key={siswa.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg"><span className="font-medium text-slate-800">{siswa.nama} ({siswa.kelas})</span><span className="text-sm text-emerald-600 bg-emerald-100 px-2 py-1 rounded-md">{abs.waktu} WIB</span></li>
-                                    })}
-                                </ul>
-                            </div>
-                            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-                                <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><XCircle className="text-red-500 w-5 h-5"/> Belum Hadir / Izin</h3>
-                                <ul className="space-y-3">
-                                    {siswaList.filter(s => !absensiList.find(a => a.nis == s.nis && a.status === 'Hadir' && a.tanggal === tanggalHariIni)).map(siswa => {
-                                        const abs = absensiList.find(a => a.nis == siswa.nis && a.tanggal === tanggalHariIni);
-                                        return <li key={siswa.id} className="flex justify-between items-center p-3 bg-red-50 rounded-lg"><span className="font-medium text-slate-800">{siswa.nama} ({siswa.kelas})</span>{abs ? <span className="text-sm text-amber-600 font-semibold">{abs.status}</span> : <span className="text-sm text-red-600 font-semibold">Belum Absen</span>}</li>
-                                    })}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                );
-            };
-
-            const OrtuDashboard = () => { return <div className="space-y-6"><h2 className="text-2xl font-bold text-slate-800">Beranda Orang Tua</h2><p className="text-slate-500">Selamat datang, silahkan pilih menu Form Izin jika anak berhalangan hadir.</p></div>; };
-            const OrtuFormIzin = () => { return <div className="space-y-6"><h2 className="text-2xl font-bold text-slate-800">Form Izin Siswa</h2><p className="text-slate-500">Hubungi guru wali kelas untuk informasi perizinan.</p></div>; };
-
-            // --- SCANNER KAMERA ASLI ---
-            const GuruScanner = () => {
-                const [scanResult, setScanResult] = useState(null);
-                const [isCameraActive, setIsCameraActive] = useState(false);
-                const lastScanRef = useRef(0);
-                const processScanRef = useRef(null);
-
-                // Fungsi yang akan tereksekusi ketika barcode berhasil dibaca
-                processScanRef.current = async (nis) => {
-                    const now = Date.now();
-                    if (now - lastScanRef.current < 4000) return; // Cegah scan dobel beruntun
-                    lastScanRef.current = now;
-
-                    const siswa = siswaList.find(s => s.nis == nis);
-                    if (siswa) {
-                        const tanggalHariIni = new Date().toISOString().split('T')[0];
-                        const waktuSekarang = new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
-                        const sudahAbsen = absensiList.find(a => a.nis == siswa.nis && a.tanggal == tanggalHariIni);
-                        
-                        if (!sudahAbsen) {
-                            const newAbsen = { nis: siswa.nis, status: 'Hadir', waktu: waktuSekarang, tanggal: tanggalHariIni };
-                            
-                            // Kirim ke Google Apps Script
-                            // Catatan: Google Script akan mengirim pesan WhatsApp secara otomatis 
-                            // sesuai logika yang kita tanam di Code.gs
-                            await sendDataToSheet('addAbsensi', newAbsen);
-                            
-                            setScanResult({ success: true, message: `${siswa.nama} berhasil absen! Notifikasi WA otomatis dikirim.`, data: siswa });
-                        } else {
-                            setScanResult({ success: false, message: `${siswa.nama} sudah absen hari ini.`, data: siswa });
-                        }
-                    } else {
-                        setScanResult({ success: false, message: `NIS ${nis} tidak ditemukan di database.`, data: {nis: nis, kelas: '-'} });
-                    }
-                    setTimeout(() => setScanResult(null), 4000); // Pesan hilang setelah 4 detik
-                };
-
-                // Menyalakan dan mematikan kamera HTML5-QRCode
-                useEffect(() => {
-                    let html5QrCode;
-                    if (isCameraActive) {
-                        html5QrCode = new window.Html5Qrcode("qr-reader");
-                        html5QrCode.start(
-                            { facingMode: "environment" }, // Paksa gunakan kamera belakang HP
-                            { fps: 10, qrbox: { width: 250, height: 250 } },
-                            (decodedText) => {
-                                if (processScanRef.current) processScanRef.current(decodedText);
-                            },
-                            (errorMessage) => { /* Abaikan error scanning frame */ }
-                        ).catch((err) => {
-                            console.error("Kamera error:", err);
-                            alert("Kamera gagal diakses. Pastikan Anda mengizinkan Akses Kamera dan membuka web melalui HTTPS.");
-                            setIsCameraActive(false);
-                        });
-                    }
-                    
-                    return () => {
-                        if (html5QrCode && html5QrCode.isScanning) {
-                            html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
-                        }
-                    };
-                }, [isCameraActive]);
-
-                return (
-                    <div className="space-y-6 max-w-2xl mx-auto no-print">
-                        <h2 className="text-2xl font-bold text-slate-800 text-center">Mode Scanner Guru</h2>
-                        
-                        <div className="bg-white rounded-2xl p-4 shadow-xl border border-slate-200 text-center relative overflow-hidden">
-                            {!isCameraActive ? (
-                                <div className="py-12">
-                                    <Camera className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                                    <p className="text-slate-500 mb-6">Arahkan QR Code Kartu Siswa ke Kamera</p>
-                                    <button onClick={() => setIsCameraActive(true)} className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 font-medium shadow-md transition">
-                                        Nyalakan Kamera
-                                    </button>
-                                </div>
-                            ) : (
-                                <div>
-                                    {/* Wadah kamera */}
-                                    <div id="qr-reader" className="w-full max-w-sm mx-auto overflow-hidden rounded-lg mb-4 bg-black"></div>
-                                    <button onClick={() => setIsCameraActive(false)} className="text-red-500 font-medium hover:bg-red-50 px-4 py-2 rounded-lg transition border border-red-500">
-                                        Matikan Kamera
-                                    </button>
-                                </div>
-                            )}
-                            
-                            {/* Popup Notifikasi Hasil Scan */}
-                            {scanResult && (
-                                <div className={`absolute bottom-4 left-4 right-4 p-4 rounded-lg flex items-center gap-3 backdrop-blur-md shadow-lg border ${scanResult.success ? 'bg-emerald-500/90 border-emerald-600 text-white' : 'bg-amber-500/90 border-amber-600 text-white'}`}>
-                                    {scanResult.success ? <CheckCircle className="w-6 h-6 shrink-0" /> : <AlertCircle className="w-6 h-6 shrink-0" />}
-                                    <div className="text-left leading-tight">
-                                        <p className="font-bold text-sm md:text-base">{scanResult.message}</p>
-                                        <p className="text-xs md:text-sm opacity-90">{scanResult.data.nis} - {scanResult.data.kelas}</p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                );
-            };
+                    <div className="p-4 border-t border-slate-700"><button onClick={() => setRole(null)} className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-slate-800 rounded-lg transition-colors"><LogOut className="w-5 h-5" /> Keluar</button></div>
+                </div>
+            );
 
             const renderContent = () => {
-                const LoadingOverlay = () => isLoading && (
-                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-blue-600 font-medium z-50 no-print">
-                        <div className="spinner"></div> Sinkronisasi...
-                    </div>
-                );
-
-                return (
-                    <>
-                        <LoadingOverlay />
-                        {(() => {
-                            switch (role) {
-                                case 'admin':
-                                    if (activeTab === 'dashboard') return <AdminDashboard />;
-                                    if (activeTab === 'data_siswa') return <AdminDataSiswa />;
-                                    if (activeTab === 'cetak_qr') return <AdminCetakQR />;
-                                    if (activeTab === 'data_guru') return <AdminDataGuru />;
-                                    return <AdminDashboard />;
-                                case 'guru':
-                                    if (activeTab === 'dashboard') return <GuruMonitoring />;
-                                    if (activeTab === 'scanner') return <GuruScanner />;
-                                    if (activeTab === 'monitoring') return <GuruMonitoring />;
-                                    return <GuruMonitoring />;
-                                case 'ortu':
-                                    if (activeTab === 'dashboard') return <OrtuDashboard />;
-                                    if (activeTab === 'form_izin') return <OrtuFormIzin />;
-                                    return <OrtuDashboard />;
-                                default: return <div>Pilih Menu</div>;
-                            }
-                        })()}
-                    </>
-                );
+                switch (role) {
+                    case 'admin':
+                        if (activeTab === 'dashboard') return <AdminDashboard siswaList={siswaList} absensiList={absensiList} fetchData={fetchData} />;
+                        if (activeTab === 'data_siswa') return <AdminDataSiswa siswaList={siswaList} sendDataToSheet={sendDataToSheet} isLoading={isLoading} />;
+                        if (activeTab === 'cetak_qr') return <AdminCetakQR siswaList={siswaList} />;
+                        if (activeTab === 'data_guru') return <AdminDataGuru guruList={guruList} sendDataToSheet={sendDataToSheet} isLoading={isLoading} />;
+                        return <AdminDashboard siswaList={siswaList} absensiList={absensiList} fetchData={fetchData} />;
+                    case 'guru':
+                        if (activeTab === 'dashboard') return <GuruMonitoring siswaList={siswaList} absensiList={absensiList} />;
+                        if (activeTab === 'scanner') return <GuruScanner siswaList={siswaList} absensiList={absensiList} sendDataToSheet={sendDataToSheet} />;
+                        if (activeTab === 'monitoring') return <GuruMonitoring siswaList={siswaList} absensiList={absensiList} />;
+                        return <GuruScanner siswaList={siswaList} absensiList={absensiList} sendDataToSheet={sendDataToSheet} />;
+                    case 'ortu':
+                        if (activeTab === 'dashboard') return <OrtuDashboard siswaList={siswaList} absensiList={absensiList} />;
+                        if (activeTab === 'form_izin') return <OrtuFormIzin siswaList={siswaList} sendDataToSheet={sendDataToSheet} isLoading={isLoading} />;
+                        return <OrtuFormIzin siswaList={siswaList} sendDataToSheet={sendDataToSheet} isLoading={isLoading} />;
+                    default: return <div>Pilih Menu</div>;
+                }
             };
 
             return (
                 <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
                     <Sidebar />
                     
-                    {/* Pembungkus Konten Utama - Tambahkan margin bawah di Mobile agar tidak tertutup Menu */}
+                    {/* Pembungkus Konten Utama - Tambahkan margin bawah di Mobile agar tidak tertutup Bottom Menu */}
                     <div className="flex-1 flex flex-col h-full overflow-hidden relative pb-16 md:pb-0">
                         {/* Header Atas Khusus Mobile */}
                         <header className="md:hidden bg-white border-b border-slate-200 p-4 flex justify-between items-center z-30 relative shadow-sm">
@@ -515,7 +575,9 @@
                             </button>
                         </header>
                         
-                        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+                        <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+                            {/* Loading Bar Tipis di Atas */}
+                            {isLoading && <div className="absolute top-0 left-0 right-0 h-1 bg-blue-100 overflow-hidden z-50"><div className="w-full h-full bg-blue-500 origin-left animate-[pulse_1s_ease-in-out_infinite]"></div></div>}
                             <div className="max-w-6xl mx-auto">
                                 {renderContent()}
                             </div>
